@@ -64,5 +64,11 @@
     "seen": 1794829887.6273818,
     "ast_hash": "56e63a1c4e6a99c8135360a15b74c67f",
     "semantic_hash": ""
+  },
+  "PROMPT.md": {
+    "mtime": 1794830175.363909,
+    "seen": 1794830181.7215936,
+    "ast_hash": "fc2146def375b3c2dc1d817ed4d3cd6b",
+    "semantic_hash": ""
   }
 }
