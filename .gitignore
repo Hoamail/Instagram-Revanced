@@ -1,0 +1,22 @@
+# build artifacts
+work/
+*.apk
+*.dex
+!dist/*.dex
+*.idsig
+*.keystore
+*.jks
+*.mp4
+*.png
+!docs/*.png
+
+# stock / reference material is not distributed
+stock*/
+restore-point/
+tools/
+*/smali/
+*/jadx/
+
+# python
+__pycache__/
+*.pyc
