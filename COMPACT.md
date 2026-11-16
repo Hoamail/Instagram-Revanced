@@ -118,6 +118,7 @@ Caller đăng ký tên (đều nằm trong luồng DM/quicksnap):
 | classes5 | `X/06GW` | `A04` | `setFlags(0x2000,0x2000)` trên window của FragmentActivity |
 | classes13 | `X/0HXa` | `onResume` | `setFlags(0x2000,0x2000)` |
 | classes13 | `X/0HYW` | `onResume` | `setFlags(0x2000,0x2000)` qua `requireWindow()` |
+| classes13 | `X/0Hx7` | `A0F(Z)` | `addFlags(0x2000)` — **`QuickSnapUnifiedFragment` = Instants**, thủ phạm thật |
 | classes16 | `X/0O6n` | `A03` | set nếu window chưa secure |
 | classes16 | `X/0OKO` | `A04` | `setFlags(flags,0x2000)` (bật/tắt theo tham số) |
 | classes16 | `X/0Vyh` | `A01` | `addFlags(0x2000)` |
@@ -129,17 +130,31 @@ Caller đăng ký tên (đều nằm trong luồng DM/quicksnap):
 | classes21 | `X/0mkM` | `run` | `setFlags(0x2000,0x2000)` |
 | classes21 | `X/0SRR` | `<init>` | **`SurfaceView.setSecure(true)`** ← nguyên nhân quay màn hình video ra đen |
 
-Patch chuẩn: `const/16 v0, 0x2000` → `const/4 v0, 0x0` tại đúng dòng set
+Patch chuẩn: `const/16 vX, 0x2000` → `const/4 vX, 0x0` tại đúng dòng set
 (không đụng các dòng `clearFlags`/`and-int` kiểm tra). Riêng `0OKO`/`0bKa` thì
 `setFlags(0x2000 → 0, mask 0x2000)` = clear, vẫn đúng ý.
 
-`flagscan.py` quét 32 dex: 80 hit `0x2000`, trong đó **14 hit thật** (`const` + `addFlags`/
-`setFlags`); phần còn lại là `or-int/lit16` trong `*$$serializer` (bitfield protobuf) —
-false positive, bỏ qua.
+`flagscan.py` quét 32 dex: **16 setter site** (`const`/`or-int` + `setFlags`/`addFlags`/
+`iput flags`), gồm 2 site `androidx.compose.ui.window.PopupLayout` chỉ *kế thừa*
+FLAG_SECURE từ window cha (bỏ qua). Các dòng `clearFlags`/`and-int` không patch.
 
-Sự thật đo được trên máy: chụp màn hình ở **DM view-once vẫn lưu được** (chỉ có toast
-giả), nhưng **Instants** bị chặn thật (`fl=... SECURE ...` trong `dumpsys window`,
-window `com.instagram.modal.TransparentModalActivity`).
+Cạm bẫy đã dính: lần quét đầu chỉ lọc `const` + window-API trong ±14 dòng nên bỏ sót
+`0Hx7:1787` (`addFlags` cách `const` 8 dòng); và `patch_dex.py` bản đầu hard-code
+`const/16 v0` nên **âm thầm không patch** dòng dùng `v1`. Đã đổi sang regex
+`const/16 (v\d+), 0x2000`. Sau mỗi lần patch phải kiểm tra log in ra `const/4 ...`.
+
+**(c) Guard per-frame** (lưới an toàn, `classes28`): `TransparentModalActivity.onCreate`
+gọi `Lapp/hx/viewonce/Saver;->guardWindow(Landroid/app/Activity;)V`; hàm này clear
+`FLAG_SECURE` và đăng ký `OnPreDrawListener` clear lại trước mỗi frame. Log
+`HX-VO: cleared FLAG_SECURE` chỉ xuất hiện khi thực sự phải can thiệp (im lặng = không
+setter nào chạy).
+
+Sự thật đo được trên máy (455.0.0.51.72, Android 16):
+- DM view-once: chụp màn hình vốn đã lưu được (chỉ có toast giả).
+- Instants: `fl=... SECURE ...` trên window `com.instagram.modal.TransparentModalActivity`
+  — do `0Hx7.A0F(Z)`. Sau khi patch `0Hx7:1787` + guard, `dumpsys` chỉ còn
+  `fl=LAYOUT_IN_SCREEN LAYOUT_INSET_DECOR SPLIT_TOUCH HARDWARE_ACCELERATED ...`
+  (không còn `SECURE`) và chụp màn hình Instants chạy đúng.
 
 ## 4. Cấu trúc APK & dex
 

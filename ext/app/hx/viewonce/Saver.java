@@ -1,5 +1,6 @@
 package app.hx.viewonce;
 
+import android.app.Activity;
 import android.content.ContentValues;
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -13,6 +14,9 @@ import android.os.Looper;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.view.View;
+import android.view.ViewTreeObserver;
+import android.view.Window;
+import android.view.WindowManager;
 import android.widget.ImageView;
 
 import java.io.ByteArrayOutputStream;
@@ -49,6 +53,7 @@ public final class Saver {
     private static final int MIN_SIDE = 200;          // px, below this it is chrome/avatar
     private static long lastHit;
     private static boolean dumpedGraph;
+    private static int secureClears;
 
     /** Content keys already written this process, so re-opens do not duplicate files. */
     private static final Set<String> SEEN =
@@ -427,6 +432,41 @@ public final class Saver {
     }
 
     // ------------------------------------------------------------------ photo
+
+    /**
+     * Belt and braces for FLAG_SECURE. The flag is cleared once and then re-cleared
+     * before every draw, so it no longer matters which controller re-applies it.
+     * Hooked from TransparentModalActivity.onCreate (Instants / quicksnap window).
+     */
+    public static void guardWindow(Activity activity) {
+        try {
+            final Window window = activity.getWindow();
+            if (window == null) return;
+            clearSecure(window);
+            View decor = window.getDecorView();
+            decor.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
+                @Override
+                public boolean onPreDraw() {
+                    clearSecure(window);
+                    return true;
+                }
+            });
+        } catch (Throwable t) {
+            Log.w(TAG, "guardWindow failed", t);
+        }
+    }
+
+    private static void clearSecure(Window window) {
+        try {
+            WindowManager.LayoutParams lp = window.getAttributes();
+            if (lp != null && (lp.flags & 0x2000) != 0) {
+                window.clearFlags(0x2000);
+                if (secureClears < 5) Log.i(TAG, "cleared FLAG_SECURE");
+                secureClears++;
+            }
+        } catch (Throwable ignored) {
+        }
+    }
 
     private static void saveBitmap(Context ctx, Bitmap bm) {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();

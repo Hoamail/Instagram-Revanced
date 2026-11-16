@@ -59,8 +59,10 @@ Nếu máy chặn (`INSTALL_FAILED_USER_RESTRICTED`): `adb shell settings put gl
       9 điểm `setFlags(0x2000)` rải trong `classes5/13/16/27/28/29`
 - [x] Xác định điểm làm đen bản ghi màn hình: `LX/0SRR.<init>` → `SurfaceView.setSecure(true)`
 - [x] Patch cả loạt 8 dex (`classes4,5,13,16,21,27,28,29`) → APK v5, cài đè giữ đăng nhập
-- [ ] Xác nhận Instants chụp được (đang test trên máy)
-- [ ] Xác nhận quay màn hình view-once video không còn đen
+- [x] Xác định được setter của **Instants**: `classes13/X/0Hx7.A0F(Z)` (`QuickSnapUnifiedFragment`)
+- [x] Instants chụp màn hình được (window `TransparentModalActivity` không còn `SECURE`)
+- [ ] Quay màn hình Instants video (kỳ vọng đã hết đen — cùng window, `0SRR` đã bỏ `setSecure`)
+- [ ] Lưu trực tiếp file gốc của Instants (hook Compose media screen, chất lượng gốc)
 - [ ] Tắt `registerScreenCaptureCallback` (bỏ thông báo "đã chụp màn hình" gửi đi)
 - [ ] Port sang 457.x
 
