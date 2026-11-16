@@ -24,10 +24,13 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Injected at index 0 of X/0lJh->Fs7(LX/00n3;)V, the view-once "media loaded"
@@ -46,6 +49,15 @@ public final class Saver {
     private static final int MIN_SIDE = 200;          // px, below this it is chrome/avatar
     private static long lastHit;
     private static boolean dumpedGraph;
+
+    /** Content keys already written this process, so re-opens do not duplicate files. */
+    private static final Set<String> SEEN =
+            Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
+
+    private static boolean seen(String key) {
+        if (SEEN.size() > 400) SEEN.clear();
+        return !SEEN.add(key);
+    }
 
     private static final String CONTROLLER_HINT = "DirectVisualMessageViewerController";
 
@@ -84,6 +96,10 @@ public final class Saver {
         if (video == null) video = findUrlByFragment(model, 6, "VideoUrl", "VideoVersion");
         if (video == null) video = findUrlByFragment(callback, 6, "VideoUrl", "VideoVersion");
         if (video != null) {
+            if (seen("v:" + video)) {
+                Log.i(TAG, "dup video, skip");
+                return;
+            }
             Log.i(TAG, "video " + video);
             saveVideo(ctx, video);
             return;
@@ -125,7 +141,24 @@ public final class Saver {
         }
         Log.i(TAG, "photo " + bestBm.getWidth() + "x" + bestBm.getHeight()
                 + " from " + name(best) + " view=" + best.getWidth() + "x" + best.getHeight());
+        String key = "p:" + bestBm.getWidth() + "x" + bestBm.getHeight() + ":" + sample(bestBm);
+        if (seen(key)) {
+            Log.i(TAG, "dup photo, skip");
+            return;
+        }
         saveBitmap(ctx, bestBm);
+    }
+
+    /** Cheap 8x8 pixel fingerprint, so the same image is not saved twice. */
+    private static int sample(Bitmap bm) {
+        int w = bm.getWidth(), h = bm.getHeight();
+        int hash = 7;
+        for (int y = 0; y < 8; y++) {
+            for (int x = 0; x < 8; x++) {
+                hash = hash * 31 + bm.getPixel(w * x / 8, h * y / 8);
+            }
+        }
+        return hash;
     }
 
     private static int area(Bitmap bm) {

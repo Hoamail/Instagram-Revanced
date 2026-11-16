@@ -90,20 +90,56 @@ Quan sát thực tế trên máy: **chụp màn hình vẫn lưu được** (IG 
 chụp màn hình" + bắn analytics) ⇒ màn hình này **không** set `FLAG_SECURE`; chỉ **video**
 dùng secure surface nên quay màn hình ra đen.
 
-### 3.5 FLAG_SECURE manager
+### 3.5 FLAG_SECURE — hai cơ chế song song
 
-`X/0R8Q` (screenshot/secure-flag manager cho quicksnap):
-`A00(LX/0R8Q;)V` = đồng bộ cờ; `const/16 v0, 0x2000` → `Window.addFlags(0x2000)`
-(dòng 241); `A01` clear; `A02(LX/0R8Q;)Z` = quyết định có bật.
-Dùng bởi `X/0R84` (quicksnap consumption controller, field `A16:0R8Q`).
+**(a) Registry `X/09Os` — cơ chế chính, theo window** (dex `classes4`)
 
-`X/0RG4` = lambda `ViewTreeObserver$OnPreDrawListener` có `packed-switch` trên `$t`,
-chứa bản sao logic 0x2000 (`$t=6` là của `0SRR`).
-`X/0mkM` = `Runnable` gọi `Window.setFlags(0x2000, 0x2000)` (tạo ở dex khác).
+```java
+final class 09Os {                      // singleton qua LX/09Ot.A00()
+    WeakHashMap<Window,Integer> A01;    // refcount theo window
+    WeakHashMap<Window,List<String>> A00; // tên các "surface" đã đăng ký
+    void A00(Window w);                 // reconcile: count>0 -> setFlags(0x2000,0x2000), count==0 -> clearFlags
+    void A01(Window w, String name);    // register: nếu window chưa có cờ -> setFlags(0x2000,0x2000); count++
+    void A02(Window w, String name);    // unregister: count--, count<=1 -> clearFlags
+}
+```
 
-`flagscan.py` quét 32 dex: 45 hit `or-int/lit16 ..., 0x2000`, phần lớn là **false
-positive** (bitfield protobuf trong `*$$serializer`); phải lọc theo ngữ cảnh
-`iput ... ->flags:I` / `LayoutParams`.
+Log đặc trưng: `"Inconsistency in window FLAG_SECURE state detected!"`.
+
+Caller đăng ký tên (đều nằm trong luồng DM/quicksnap):
+`DirectVisualMessageViewerController` (classes21, 2 chỗ), `DirectVisualReplyFragment`
+(classes14, `0N6T`), `ScreenshotNotificationManager` (classes4, `02Fy`), `0A2g`, `0bdC`.
+⇒ Patch **2 site `setFlags`** trong `09Os` (`A00` và `A01`) là đủ cho phần lớn surface.
+
+**(b) Set cờ trực tiếp** ở nhiều module (không qua registry):
+
+| dex | file | method | kiểu |
+|---|---|---|---|
+| classes5 | `X/06GW` | `A04` | `setFlags(0x2000,0x2000)` trên window của FragmentActivity |
+| classes13 | `X/0HXa` | `onResume` | `setFlags(0x2000,0x2000)` |
+| classes13 | `X/0HYW` | `onResume` | `setFlags(0x2000,0x2000)` qua `requireWindow()` |
+| classes16 | `X/0O6n` | `A03` | set nếu window chưa secure |
+| classes16 | `X/0OKO` | `A04` | `setFlags(flags,0x2000)` (bật/tắt theo tham số) |
+| classes16 | `X/0Vyh` | `A01` | `addFlags(0x2000)` |
+| classes27 | `X/0bKa` | `A04` | như `0OKO` |
+| classes28 | `HonoluluBaseActivity` | `onCreate` | `setFlags(0x2000,0x2000)` — base của `CameraActivity`/`CameraShortcutActivity` |
+| classes29 | `X/0prN` | `A00` | refcount/window qua `0qlI`, `addFlags(0x2000)` |
+| classes21 | `X/0R8Q` | `A00`/`A01` | quicksnap manager (dùng bởi `X/0R84` ← `X/05g6`, quicksnap consumption VM) |
+| classes21 | `X/0RG4` | `onPreDraw` `$t=6` | bản sao logic của `0R8Q` |
+| classes21 | `X/0mkM` | `run` | `setFlags(0x2000,0x2000)` |
+| classes21 | `X/0SRR` | `<init>` | **`SurfaceView.setSecure(true)`** ← nguyên nhân quay màn hình video ra đen |
+
+Patch chuẩn: `const/16 v0, 0x2000` → `const/4 v0, 0x0` tại đúng dòng set
+(không đụng các dòng `clearFlags`/`and-int` kiểm tra). Riêng `0OKO`/`0bKa` thì
+`setFlags(0x2000 → 0, mask 0x2000)` = clear, vẫn đúng ý.
+
+`flagscan.py` quét 32 dex: 80 hit `0x2000`, trong đó **14 hit thật** (`const` + `addFlags`/
+`setFlags`); phần còn lại là `or-int/lit16` trong `*$$serializer` (bitfield protobuf) —
+false positive, bỏ qua.
+
+Sự thật đo được trên máy: chụp màn hình ở **DM view-once vẫn lưu được** (chỉ có toast
+giả), nhưng **Instants** bị chặn thật (`fl=... SECURE ...` trong `dumpsys window`,
+window `com.instagram.modal.TransparentModalActivity`).
 
 ## 4. Cấu trúc APK & dex
 

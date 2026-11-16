@@ -13,8 +13,8 @@ import os
 import re
 import sys
 
-CALL = re.compile(r"Landroid/view/(?:Window|WindowManager\$LayoutParams|WindowManager)->"
-                  r"(?:addFlags|setFlags)\(I+I?\)")
+CALL = re.compile(r"Landroid/view/(?:Window|WindowManager\$LayoutParams|WindowManager);->"
+                  r"(?:addFlags|setFlags)\(I+\)V")
 CONST = re.compile(r"const(?:/16|/high16)?\s+(v\d+), 0x0*2000\b")
 ORLIT = re.compile(r"or-int/lit16\s+v\d+, v\d+, 0x0*2000\b")
 IPUTFLAGS = re.compile(r"iput(?:-boolean|-wide)?\s+v\d+, v\d+, .*->flags:I")

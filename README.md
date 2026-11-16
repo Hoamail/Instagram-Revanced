@@ -28,13 +28,19 @@ tên class** (`DirectVisualMessageViewerController`), không hardcode field obfu
 ## Build
 
 ```powershell
-# cần: jadx/apktool không bắt buộc; bắt buộc APKEditor, JDK 17+, Android build-tools 36 + android-36 platform
-.\build-patch.ps1 -StockApk ..\stock\base.apk -Out work\ig-hx-signed.apk
+# cần: APKEditor, JDK 17+, Android build-tools 36 + android-36 platform
+# 1) extension (Saver) -> work\ext-dex\classes.dex
+.\build-patch.ps1 -SkipPatched                # javac + d8 only
+# 2) patch từng dex (decode -> sửa smali -> build) -> work\<dex>.dex.patched
+python patch_dex.py <stock.apk> classes4.dex  X/09Os.smali:178  X/09Os.smali:258
+python patch_dex.py <stock.apk> classes21.dex X/0lJh.smali:1 ...
+# 3) ghép + ký + cài
+.\assemble.ps1 -Stock <stock.apk>             # -NoInstall nếu chỉ muốn build
 ```
 
-Chain: `build-stub.py` (cắt 1 dex) → APKEditor decode → `inject.py` → javac+d8 → APKEditor
-build → `repack.py` → zipalign → apksigner. Ký bằng keystore riêng, **phải giữ nguyên
-keystore** để update đè lên bản đã cài (không mất đăng nhập).
+Chain trong `assemble.ps1`: `repack.py` (thay 8 dex + thêm `classes33.dex`) → zipalign →
+apksigner → `adb install -r`. Ký bằng keystore riêng, **phải giữ nguyên keystore** để
+update đè lên bản đã cài (không mất đăng nhập).
 
 ## Cài
 
@@ -48,10 +54,14 @@ Nếu máy chặn (`INSTALL_FAILED_USER_RESTRICTED`): `adb shell settings put gl
 ## Trạng thái
 
 - [x] Hook view-once photo → PNG
-- [x] Hook view-once video → MP4 (URL CDN, tải trực tiếp)
-- [x] Xác định điểm chặn quay màn hình: `LX/0SRR.<init>` gọi `SurfaceView.setSecure(true)`
-- [ ] Patch `setSecure(true)` → `false` (quay màn hình video không còn đen)
-- [ ] Tắt `registerScreenCaptureCallback` (bỏ thông báo "đã chụp màn hình")
+- [x] Hook view-once video → MP4 (URL CDN, tải trực tiếp), dedupe theo nội dung
+- [x] Xác định **hai** cơ chế chặn chụp màn hình: registry `X/09Os` (theo window) +
+      9 điểm `setFlags(0x2000)` rải trong `classes5/13/16/27/28/29`
+- [x] Xác định điểm làm đen bản ghi màn hình: `LX/0SRR.<init>` → `SurfaceView.setSecure(true)`
+- [x] Patch cả loạt 8 dex (`classes4,5,13,16,21,27,28,29`) → APK v5, cài đè giữ đăng nhập
+- [ ] Xác nhận Instants chụp được (đang test trên máy)
+- [ ] Xác nhận quay màn hình view-once video không còn đen
+- [ ] Tắt `registerScreenCaptureCallback` (bỏ thông báo "đã chụp màn hình" gửi đi)
 - [ ] Port sang 457.x
 
 Chi tiết kỹ thuật, anchor, gotcha: xem [`COMPACT.md`](COMPACT.md).
