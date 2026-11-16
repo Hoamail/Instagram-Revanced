@@ -51,6 +51,18 @@ adb logcat -s HX-VO:V                  # xem hook chạy
 
 Nếu máy chặn (`INSTALL_FAILED_USER_RESTRICTED`): `adb shell settings put global adb_install_need_confirm 0`.
 
+## Không cần chế độ nhà phát triển để dùng
+
+APK đã patch chạy độc lập: tắt USB debugging / Developer options **không** ảnh hưởng gì —
+lưu view-once, chụp và quay Instants vẫn hoạt động bình thường. Chỉ khi build/cài bản mới
+mới cần bật lại adb. Vì ký bằng key riêng, Play Store không update đè được: muốn lên bản
+Instagram mới thì tải APK gốc, patch lại theo runbook trong `COMPACT.md`, rồi `adb install -r`.
+
+## Bản đồ code
+
+`graphify-out/` chứa knowledge graph của repo (graph.html mở bằng browser, GRAPH_REPORT.md
+là báo cáo, graph.json là dữ liệu thô). Cập nhật sau khi sửa code: `graphify update .`.
+
 ## Trạng thái
 
 - [x] Hook view-once photo → PNG
@@ -61,7 +73,7 @@ Nếu máy chặn (`INSTALL_FAILED_USER_RESTRICTED`): `adb shell settings put gl
 - [x] Patch cả loạt 8 dex (`classes4,5,13,16,21,27,28,29`) → APK v5, cài đè giữ đăng nhập
 - [x] Xác định được setter của **Instants**: `classes13/X/0Hx7.A0F(Z)` (`QuickSnapUnifiedFragment`)
 - [x] Instants chụp màn hình được (window `TransparentModalActivity` không còn `SECURE`)
-- [ ] Quay màn hình Instants video (kỳ vọng đã hết đen — cùng window, `0SRR` đã bỏ `setSecure`)
+- [x] Quay màn hình Instants video có hình (hết đen)
 - [ ] Lưu trực tiếp file gốc của Instants (hook Compose media screen, chất lượng gốc)
 - [ ] Tắt `registerScreenCaptureCallback` (bỏ thông báo "đã chụp màn hình" gửi đi)
 - [ ] Port sang 457.x

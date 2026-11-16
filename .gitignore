@@ -20,3 +20,6 @@ tools/
 # python
 __pycache__/
 *.pyc
+
+# graphify cache
+graphify-out/cache/

@@ -216,13 +216,49 @@ I HX-VO: saved video 354540B -> content://media/external/video/media/1896
 File: `/sdcard/Pictures/InstagramViewOnce/vo_<epoch>.png|mp4`. MP4 verify: `ftyp/isom`,
 có `moov` + `mdat`.
 
-## 8. Việc tiếp theo
+## 8. Post-mortem: từng chướng ngại và cách vượt
 
-1. Patch `0SRR.<init>`: `setSecure(false)` → quay màn hình video không đen.
-2. Tìm + patch `registerScreenCaptureCallback` (API 34+) hoặc listener tương đương
-   trong 32 dex (`flagscan.py` mở rộng) để bỏ thông báo "đã chụp màn hình".
-3. Nếu cần chặn triệt để: patch `0R8Q.A00` (đổi literal `0x2000` → `0x0`) — chỉ ảnh
-   hưởng surface nào thực sự bật secure.
-4. Port 457.x: chỉ cần re-verify 3 anchor — class chứa `photo_cant_load`, method void
-   nhận ≥1 param tham chiếu `DirectVisualMessageViewerController`, tên class controller.
-   `inject.py` fail rõ ràng nếu anchor đổi.
+| # | Chướng ngại | Cách phát hiện | Cách vượt |
+|---|---|---|---|
+| 1 | Cách của daboynb chết từ 451+ | `.equals()` với FQN cũ luôn null | Bỏ hardcode FQN; tìm controller bằng **fragment tên class** qua reflection BFS |
+| 2 | Không có "ảnh đã load" event | đọc `DirectVisualMessageViewerController` | Hook `X/0lJh->Fs7(LX/00n3;)V` — callback của `IgProgressImageView.A0C` |
+| 3 | `FileOutputStream` vào `Pictures` bị chặn (targetSdk 37) | SecurityException | Ghi qua **MediaStore** + `RELATIVE_PATH` + `IS_PENDING` |
+| 4 | Lưu trùng 4 lần cùng 1 video | thấy 4 file `43548 B` giống nhau | Dedupe theo nội dung: URL cho video, fingerprint 8×8 cho ảnh |
+| 5 | Chụp màn hình vẫn bị chặn sau khi patch 14 site | `dumpsys` còn `SECURE` | Quét lại **theo ngữ cảnh ±8 dòng** (không phải ±14) → ra `0Hx7.A0F(Z)` = `QuickSnapUnifiedFragment` |
+| 6 | Patch "thành công" nhưng không có tác dụng | log in ra `const/16 v1, 0x2000` (không đổi) | `patch_dex.py` hard-code `v0`; đổi sang regex `const/16 (v\d+), 0x2000` |
+| 7 | Quay màn hình ra đen | `0SRR.<init>` | `SurfaceView.setSecure(true)` → `(false)`; cộng thêm việc bỏ `FLAG_SECURE` |
+| 8 | Sợ patch hỏng app | — | 8 dex build lại + cài đè cùng keystore → giữ login, không crash |
+
+**Bài học chung:** mỗi lần "đã patch mà không có tác dụng" thì nguyên nhân luôn là một
+trong ba: (a) site chưa được liệt kê, (b) patch không thực sự ghi vào file, (c) code
+đó không được nạp. Phải kiểm chứng bằng dữ liệu máy (`dumpsys`, `logcat`), không tin log
+của script.
+
+## 9. Runbook khi Instagram ra bản mới
+
+1. **Chuẩn bị**: lưu `hx.keystore` (mất là phải uninstall → mất login). Chụp restore point
+   mới: APK gốc + `dumpsys` + sha256. (`restore-point\<ngày>\restore.ps1`.)
+2. **Quét**: `python flagscan.py <apk>` để lấy mọi literal `0x2000`; rồi chạy bản quét
+   ngữ cảnh (±8 dòng, có `setFlags`/`addFlags`/`iput flags`) để ra danh sách setter.
+   Kiểm tra bằng mắt từng dòng trước khi patch.
+3. **Hook view-once**: tìm class có tên chứa `DirectVisualMessageViewerController`, tìm
+   `IgProgressImageView.A0C(LX/0Elt;I)` trong class đó → listener là `X/0lJh` (tên có thể
+   đổi) → hook method `void (LX/00n3;)V` đầu tiên của nó. `Saver` không phụ thuộc gì khác.
+4. **Instants**: tìm class có `__redex_internal_original_name = "QuickSnapUnifiedFragment"`
+   → method có `addFlags(0x2000)` → patch `const/16 vX, 0x2000` thành `const/4 vX, 0x0`.
+5. **Guard**: chèn `invoke-static {p0}, Lapp/hx/viewonce/Saver;->guardWindow(Landroid/app/Activity;)V`
+   sau `invoke-super ... onCreate` trong `TransparentModalActivity`.
+6. **Build**: `python patch_dex.py <stock.apk> <dex> <file:line> ...` cho từng dex đã sửa,
+   compile lại `Saver.java` bằng javac+d8 (`build-patch.ps1`), rồi `.\assemble.ps1`.
+7. **Verify**: `dumpsys window` không còn `SECURE`; `adb logcat -s HX-VO:V` có `hit cb=`;
+   file mới trong `/sdcard/Pictures/InstagramViewOnce`; chụp + quay thử Instants.
+8. Nếu anchor đổi: `inject.py`/`patch_dex.py` phải fail rõ ràng — không được im lặng bỏ qua
+   (xem mục #6 ở trên).
+
+## 10. Còn lại (chưa làm)
+
+1. Tắt `registerScreenCaptureCallback` (`classes2/X/05uZ.1`) để bỏ thông báo
+   "đã chụp màn hình" gửi cho người gửi.
+2. Lưu **file gốc** của Instants (Compose `QuickSnapMediaViewerScreen`, model trong
+   `QuickSnapConsumptionViewModel`) — hiện chỉ quay được màn hình, chưa lưu bitrate gốc.
+3. Port sang 457.x.
